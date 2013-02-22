@@ -9,7 +9,7 @@ from gi.repository import Gtk, GooCanvas, GObject, Gio
 from datetime import datetime
 
 class graph():
-  def __init__(self):
+	def __init__(self):
 		self.blobsize = 8.
 		self.margin = 20.
 		self.width = 320
