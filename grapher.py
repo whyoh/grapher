@@ -11,6 +11,7 @@ from datetime import datetime
 
 class graph():
     def __init__(self):
+        # UI settings
         self.blobsize = 8.
         self.margin = 20.
         self.width = 320
@@ -23,6 +24,21 @@ class graph():
         self.minscale = 0.75
         self.maxscale = 2.
 
+        # physics
+        self.mindist = 10.
+        self.naturallength = 20.
+        self.damping = 0.05
+        self.spring = 0.05
+        self.stepsize = 1.
+        self.default_strength = 1.
+        self.default_mass = 0.25
+        self.default_charge = 10.
+
+        # the graph
+        self.graph = None
+        self.create()
+
+        # GooCanvas-based UI
         self.canvas = GooCanvas.Canvas(has_tooltip=True)
         self.canvas.set_property('background-color-rgb', 0xe8e8e8)
         self.stage = self.canvas.get_root_item()
@@ -33,10 +49,6 @@ class graph():
         self.canvas.set_size_request(self.width, self.height)
         self.window.connect('destroy', Gtk.main_quit)
         self.window.show_all()
-
-        self.graph = None
-        self.create()
-
         self.create_actors()
         GObject.idle_add(self.step)
 
@@ -72,18 +84,13 @@ class graph():
         self.unpinnedframe = 0
         self.graph = networkx.random_regular_graph(3, 26)  # nice test graph
         self.centre()
-        self.mindist = 10.
-        self.naturallength = 20.
-        self.damping = 0.05
-        self.spring = 0.05
-        self.stepsize = 1.
         for n in self.graph.node:
             for m in self.graph[n]:
                 if m > n: continue
-                self.graph[n][m]['strength'] = 1.
+                self.graph[n][m]['strength'] = self.default_strength
             # set item physical attributes
-            self.graph.node[n]['mass'] = 0.25
-            self.graph.node[n]['charge'] = 10.
+            self.graph.node[n]['mass'] = self.default_mass
+            self.graph.node[n]['charge'] = self.default_charge
 
     def destroy_actors(self):
         for n in self.graph.node:
