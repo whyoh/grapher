@@ -22,6 +22,7 @@ class graph():
         self.scale = 1.
         self.minscale = 0.75
         self.maxscale = 2.
+
         self.canvas = GooCanvas.Canvas(has_tooltip=True)
         self.canvas.set_property('background-color-rgb', 0xe8e8e8)
         self.stage = self.canvas.get_root_item()
@@ -32,8 +33,11 @@ class graph():
         self.canvas.set_size_request(self.width, self.height)
         self.window.connect('destroy', Gtk.main_quit)
         self.window.show_all()
+
         self.graph = None
         self.create()
+
+        self.create_actors()
         GObject.idle_add(self.step)
 
     def centre(self):
@@ -66,16 +70,6 @@ class graph():
         self.last = datetime.now()
         self.frame = 0
         self.unpinnedframe = 0
-        if self.graph:
-            for n in self.graph.node:
-                for m in self.graph[n]:
-                    if m > n: continue
-                    if 'actor' in self.graph[n][m]:
-                        self.stage.remove_child(self.stage.find_child(self.graph[n][m]['actor']))
-                        del self.graph[n][m]['actor']
-                if 'actor' in self.graph.node[n]:
-                    self.stage.remove_child(self.stage.find_child(self.graph.node[n]['actor']))
-                    del self.graph.node[n]['actor']
         self.graph = networkx.random_regular_graph(3, 26)  # nice test graph
         self.centre()
         self.mindist = 10.
@@ -87,6 +81,25 @@ class graph():
             for m in self.graph[n]:
                 if m > n: continue
                 self.graph[n][m]['strength'] = 1.
+            # set item physical attributes
+            self.graph.node[n]['mass'] = 0.25
+            self.graph.node[n]['charge'] = 10.
+
+    def destroy_actors(self):
+        for n in self.graph.node:
+            for m in self.graph[n]:
+                if m > n: continue
+                if 'actor' in self.graph[n][m]:
+                    self.stage.remove_child(self.stage.find_child(self.graph[n][m]['actor']))
+                    del self.graph[n][m]['actor']
+            if 'actor' in self.graph.node[n]:
+                self.stage.remove_child(self.stage.find_child(self.graph.node[n]['actor']))
+                del self.graph.node[n]['actor']
+
+    def create_actors(self):
+        for n in self.graph.node:
+            for m in self.graph[n]:
+                if m > n: continue
                 # including tooltips causes a memory leak when actors are destroyed (bgo 669688)
                 self.graph[n][m]['actor'] = GooCanvas.CanvasPath(parent=self.stage, stroke_color_rgba=0x11111180,
                                                                  line_width=0.75, title='link')
@@ -98,9 +111,6 @@ class graph():
             self.graph.node[n]['actor'].connect("motion-notify-event", self.drag)
             self.graph.node[n]['actor'].connect("button-release-event", self.unpin)
             self.graph.node[n]['actor'].connect("grab-broken-event", self.unpin)
-            # set item physical attributes
-            self.graph.node[n]['mass'] = 0.25
-            self.graph.node[n]['charge'] = 10.
 
     def button(self, item, target, event):
         self.pin = item
@@ -175,6 +185,7 @@ class graph():
         if self.unpinnedframe == 500:
             elapsed = datetime.now() - self.last
             print self.frame / elapsed.total_seconds()
+            self.destroy_actors()
             self.create()
         return True
 
