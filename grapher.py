@@ -10,7 +10,7 @@ from vispy import gloo, app
 
 
 class Graph():
-    def __init__(self):
+    def __init__(self, trackEnergy=False):
         # UI settings
         self.blobsize = 8.
         self.margin = 20.
@@ -37,6 +37,13 @@ class Graph():
         self.default_mass = 0.25
         self.default_charge = 10.
 
+        self.trackEnergy = trackEnergy
+        self.ke = 0.
+        self.ee = 0.
+        self.se = 0.
+        self.totalEnergy = 0.
+        self.peakEnergy = 0.
+
         # the graph
         self.graph = None
         self.create()
@@ -45,6 +52,8 @@ class Graph():
         for n in self.graph.node:
             self.graph.node[n]['position'] = vector([0., 0.])
             self.graph.node[n]['velocity'] = vector([0., 0.])
+            if self.trackEnergy:
+                self.graph.node[n]['ke'] = 0.
 
     def align(self):
         maxx = max(self.graph.node[n]['position'][0] for n in self.graph.node)
@@ -81,9 +90,15 @@ class Graph():
             # set item physical attributes
             self.graph.node[n]['mass'] = self.default_mass
             self.graph.node[n]['charge'] = self.default_charge
+        if self.trackEnergy:
+            self.peakEnergy = 0.
 
     def step(self):
         # apply physics to update velocities
+        if self.trackEnergy:
+            self.ke = 0.
+            self.ee = 0.
+            self.se = 0.  # strain/spring/string energy (elastic potential)
         for n in self.graph.node:
             force = vector([0., 0.])
             for m in self.graph.node:
@@ -102,6 +117,12 @@ class Graph():
                 force += direction * self.graph.node[n]['charge'] * self.graph.node[m]['charge'] / dist ** 3.
                 if m in self.graph[n]:
                     force -= direction * self.spring * (1. - self.naturallength / dist)
+                if m < n or not self.trackEnergy:
+                    continue
+                self.ee += self.graph.node[n]['charge'] * self.graph.node[m]['charge'] / dist
+                # calc elastic potential
+                stretch = dist - self.naturallength
+                self.se += self.spring * stretch * stretch / 2.
 
             massy = self.stepsize / self.graph.node[n]['mass']
             dampdv = - self.damping * self.graph.node[n]['velocity'] * norm(self.graph.node[n]['velocity']) * massy
@@ -109,12 +130,20 @@ class Graph():
                 self.graph.node[n]['velocity'] = vector([0., 0.])
             else:
                 self.graph.node[n]['velocity'] += dampdv
+            if self.trackEnergy:
+                speed = norm(self.graph.node[n]['velocity'])
+                self.ke += self.graph.node[n]['mass'] * speed * speed / 2.
             self.graph.node[n]['velocity'] += force * massy
         # update positions
         for n in self.graph.node:
             self.graph.node[n]['position'] += self.graph.node[n]['velocity'] * self.stepsize
         if not self.pin:
             self.align()
+
+        if self.trackEnergy:
+            self.totalEnergy = self.ke + self.ee + self.se
+            if self.totalEnergy > self.peakEnergy:
+                self.peakEnergy = self.totalEnergy
 
         return True
 
@@ -205,7 +234,9 @@ class GooGrapher(Graph):
 class GlooGrapher(Graph, app.Canvas):
     def __init__(self, **kwargs):
         import numpy
-        Graph.__init__(self)
+        Graph.__init__(self, **kwargs)
+        if 'trackEnergy' in kwargs:
+            del kwargs['trackEnergy']
         app.Canvas.__init__(self, keys='interactive', **kwargs)
         self.size = self.width, self.height
         self.position = 50, 50
@@ -303,6 +334,8 @@ class GlooGrapher(Graph, app.Canvas):
         self.frame += 1
         if not self.pin:
             self.unpinnedframe += 1
+        if self.unpinnedframe % 100 == 0:
+            print self.totalEnergy
         if self.unpinnedframe == 500:
             elapsed = datetime.now() - self.last
             print self.frame / elapsed.total_seconds()
@@ -320,5 +353,5 @@ class GlooGrapher(Graph, app.Canvas):
         app.run()
 
 
-g = GlooGrapher()
+g = GlooGrapher(trackEnergy=True)
 g.run()
