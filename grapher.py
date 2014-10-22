@@ -32,14 +32,15 @@ class Graph():
         self.ke = 1. / (4. * pi * 8.854187817620e-12)
         self.mindist = 10.
         self.naturallength = 20.  # metres?
-        self.damping = 0.001  # pCdA/2 from the drag equation
+        self.damping = 0.0015  # pCdA/2 from the drag equation
         self.spring = 0.05  # k from spring equation
         self.default_mass = 0.005  # kg?
-        self.default_charge = 1.e-4  # .... coulombs?
+        self.default_charge = 1.25e-4  # .... coulombs?
         self.shc = 0.71  # J/g.K of graphite
         self.roomTemp = 295.  # Kelvin
         self.default_strength = 1.
-        self.stepsize = 0.175
+        self.stepsize = 0.15
+        self.jitter = 0.02  # should be related to temperature?
 
         self.trackEnergy = track_energy
         self.autoCorrect = auto_correct
@@ -108,7 +109,8 @@ class Graph():
                     continue
 
                 ### CRITICAL SPEED SECTION - expect the code to be a bit convoluted ###
-                direction = self.graph.node[n]['position'] - self.graph.node[m]['position']
+                offset = vector([uniform(-self.jitter, self.jitter), uniform(-self.jitter, self.jitter)])
+                direction = self.graph.node[n]['position'] - self.graph.node[m]['position'] + offset
                 dist = norm(direction)
                 if dist < self.mindist:
                     too_close = True
@@ -373,5 +375,5 @@ class GlooGrapher(Graph, app.Canvas):
         app.run()
 
 
-g = GlooGrapher(track_energy=False, auto_correct=False)
+g = GlooGrapher(track_energy=True, auto_correct=False)
 g.run()
