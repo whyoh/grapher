@@ -7,10 +7,11 @@ from numpy.linalg import norm
 from random import uniform
 from datetime import datetime
 from vispy import gloo, app
+from math import pi
 
 
 class Graph():
-    def __init__(self, trackEnergy=False):
+    def __init__(self, track_energy=False, auto_correct=False):
         # UI settings
         self.blobsize = 8.
         self.margin = 20.
@@ -22,25 +23,27 @@ class Graph():
         self.pinned = None
         self.scale = 1.
         self.minscale = 0.75
-        self.maxscale = 2.
+        self.maxscale = 3.
         self.last = datetime.now()
         self.frame = 0
         self.unpinnedframe = 0
 
         # physics
+        self.ke = 1. / (4. * pi * 8.854187817620e-12)
         self.mindist = 10.
-        self.naturallength = 20.
-        self.damping = 0.05
-        self.spring = 0.05
-        self.stepsize = 1.
+        self.naturallength = 20.  # metres?
+        self.damping = 0.001  # pCdA/2 from the drag equation
+        self.spring = 0.05  # k from spring equation
+        self.default_mass = 0.005  # kg?
+        self.default_charge = 1.e-4  # .... coulombs?
+        self.shc = 0.71  # J/g.K of graphite
+        self.roomTemp = 295.  # Kelvin
         self.default_strength = 1.
-        self.default_mass = 0.25
-        self.default_charge = 10.
+        self.stepsize = 0.175
 
-        self.trackEnergy = trackEnergy
-        self.ke = 0.
-        self.ee = 0.
-        self.se = 0.
+        self.trackEnergy = track_energy
+        self.autoCorrect = auto_correct
+        self.energy = {'kinetic': 0., 'electrical': 0., 'spring': 0.}
         self.totalEnergy = 0.
         self.peakEnergy = 0.
 
@@ -52,8 +55,6 @@ class Graph():
         for n in self.graph.node:
             self.graph.node[n]['position'] = vector([0., 0.])
             self.graph.node[n]['velocity'] = vector([0., 0.])
-            if self.trackEnergy:
-                self.graph.node[n]['ke'] = 0.
 
     def align(self):
         maxx = max(self.graph.node[n]['position'][0] for n in self.graph.node)
@@ -92,13 +93,14 @@ class Graph():
             self.graph.node[n]['charge'] = self.default_charge
         if self.trackEnergy:
             self.peakEnergy = 0.
+            self.totalEnergy = 0.
 
     def step(self):
         # apply physics to update velocities
-        if self.trackEnergy:
-            self.ke = 0.
-            self.ee = 0.
-            self.se = 0.  # strain/spring/string energy (elastic potential)
+        ke = 0.
+        ee = 0.
+        se = 0.  # strain/spring/string energy (elastic potential)
+        too_close = False
         for n in self.graph.node:
             force = vector([0., 0.])
             for m in self.graph.node:
@@ -109,20 +111,25 @@ class Graph():
                 direction = self.graph.node[n]['position'] - self.graph.node[m]['position']
                 dist = norm(direction)
                 if dist < self.mindist:
+                    too_close = True
                     if dist == 0.:
                         direction = vector([uniform(-0.5, 0.5), uniform(-0.5, 0.5)])
                     dist = self.mindist
                     newdist = norm(direction)
                     direction *= dist / newdist
-                force += direction * self.graph.node[n]['charge'] * self.graph.node[m]['charge'] / dist ** 3.
+                force += self.ke * direction * self.graph.node[n]['charge'] * self.graph.node[m]['charge'] / dist ** 3.
                 if m in self.graph[n]:
                     force -= direction * self.spring * (1. - self.naturallength / dist)
                 if m < n or not self.trackEnergy:
                     continue
-                self.ee += self.graph.node[n]['charge'] * self.graph.node[m]['charge'] / dist
+                ee += self.graph.node[n]['charge'] * self.graph.node[m]['charge'] / dist
                 # calc elastic potential
                 stretch = dist - self.naturallength
-                self.se += self.spring * stretch * stretch / 2.
+                se += self.spring * stretch * stretch / 2.
+
+            if self.trackEnergy:
+                speed = norm(self.graph.node[n]['velocity'])
+                ke += self.graph.node[n]['mass'] * speed * speed / 2.
 
             massy = self.stepsize / self.graph.node[n]['mass']
             dampdv = - self.damping * self.graph.node[n]['velocity'] * norm(self.graph.node[n]['velocity']) * massy
@@ -130,9 +137,6 @@ class Graph():
                 self.graph.node[n]['velocity'] = vector([0., 0.])
             else:
                 self.graph.node[n]['velocity'] += dampdv
-            if self.trackEnergy:
-                speed = norm(self.graph.node[n]['velocity'])
-                self.ke += self.graph.node[n]['mass'] * speed * speed / 2.
             self.graph.node[n]['velocity'] += force * massy
         # update positions
         for n in self.graph.node:
@@ -140,8 +144,17 @@ class Graph():
         if not self.pin:
             self.align()
 
-        if self.trackEnergy:
-            self.totalEnergy = self.ke + self.ee + self.se
+        if self.trackEnergy and not too_close:
+            ee *= self.ke
+            self.energy = {'kinetic': ke, 'electrical': ee, 'spring': se}
+            new_total_energy = ke + ee + se
+            if new_total_energy > self.totalEnergy and self.autoCorrect and self.totalEnergy > 0.:
+                scaling_factor = (self.totalEnergy / new_total_energy) ** 0.5
+                for n in self.graph.node:
+                    self.graph.node[n]['velocity'] *= scaling_factor
+            else:
+                self.totalEnergy = new_total_energy
+
             if self.totalEnergy > self.peakEnergy:
                 self.peakEnergy = self.totalEnergy
 
@@ -235,8 +248,9 @@ class GlooGrapher(Graph, app.Canvas):
     def __init__(self, **kwargs):
         import numpy
         Graph.__init__(self, **kwargs)
-        if 'trackEnergy' in kwargs:
-            del kwargs['trackEnergy']
+        for keyword in ['track_energy', 'auto_correct']:
+            if keyword in kwargs:
+                del kwargs[keyword]
         app.Canvas.__init__(self, keys='interactive', **kwargs)
         self.size = self.width, self.height
         self.position = 50, 50
@@ -284,6 +298,12 @@ class GlooGrapher(Graph, app.Canvas):
         gloo.clear(color=True, depth=True)
         self.line_program.draw('lines', self.index)
         self.circle_program.draw('points')
+
+    @staticmethod
+    def on_close(event):
+        _ = event
+        app.quit()
+        exit(0)
 
     def build_vbo_array_from_graph_nodes(self):
         import numpy
@@ -353,5 +373,5 @@ class GlooGrapher(Graph, app.Canvas):
         app.run()
 
 
-g = GlooGrapher(trackEnergy=True)
+g = GlooGrapher(track_energy=False, auto_correct=False)
 g.run()
