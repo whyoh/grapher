@@ -7,6 +7,8 @@ written in python using numpy and networkx libraries.
 
 also requires Gtk, GooCanvas, GObject and Gio from gi.repository.  so it's pretty much linux/gnome only at the moment.
 
+alternatively, use the from-goo-to-gloo branch - that uses vispy instead and works on mac and linux (and probably windows too, if anyone cares).
+
 to do
 -----
 * turn this list into issues
