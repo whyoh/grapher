@@ -1,13 +1,13 @@
 #!/usr/bin/python
 # generate a graph, solve for physics, render with sub-class
-
+from __future__ import print_function
+from math import pi
 import networkx
-from numpy import array as vector
+from numpy import array as vector, dot
 from numpy.linalg import norm
 from random import uniform
 from datetime import datetime
 from vispy import gloo, app
-from math import pi
 
 
 class Graph():
@@ -39,7 +39,7 @@ class Graph():
         self.shc = 0.71  # J/g.K of graphite
         self.roomTemp = 295.  # Kelvin
         self.default_strength = 1.
-        self.stepsize = 0.15
+        self.stepsize = 0.19  # 0.18 works.  0.19 is pretty.  0.2 is frantic 0.22 goes infinite about 1 in 3
         self.jitter = 0.02  # should be related to temperature?
 
         self.trackEnergy = track_energy
@@ -49,7 +49,7 @@ class Graph():
         self.peakEnergy = 0.
 
         # the graph
-        self.graph = None
+        self.graph = networkx.Graph()
         self.create()
 
     def centre(self):
@@ -83,6 +83,7 @@ class Graph():
         self.unpinnedframe = 0
         self.graph = networkx.random_regular_graph(3, 26)  # nice test graph
 #        self.graph = networkx.random_regular_graph(3, 16)  # simple test graph
+#        self.graph = networkx.random_regular_graph(3, 36)  # complex test graph
         self.centre()
         for n in self.graph.node:
             for m in self.graph[n]:
@@ -289,7 +290,7 @@ class GlooGrapher(Graph, app.Canvas):
     def on_initialize(event):
         _ = event  # shut up pycharm - function prototype defined by OpenGL
         gloo.set_state(
-            clear_color='white', depth_test=False, blend=True, blend_func=('src_alpha', 'one_minus_src_alpha'))
+            clear_color='black', depth_test=False, blend=True, blend_func=('src_alpha', 'one_minus_src_alpha'))
 
     def on_resize(self, event):
         self.width, self.height = event.size
@@ -326,9 +327,13 @@ class GlooGrapher(Graph, app.Canvas):
             data['a_position'][0] = node['position'][0] / 100.
             data['a_position'][1] = node['position'][1] / 100.
             data['a_size'] = bs
-            data['a_bg_color'][0] = 0.75
-            data['a_bg_color'][1] = 0.75 if node['velocity'][0] > 0. or node['velocity'][1] > 0. else 1.
-            data['a_bg_color'][2] = 0.75
+            speed = dot(node['velocity'], node['velocity']) / 100.
+            if speed > 1:
+                speed = 1
+            data['a_bg_color'][0] = 1. if speed == 1 else speed
+            data['a_bg_color'][1] = 0. if speed == 1 else 0.5 if speed < 0.0002 else speed
+            data['a_bg_color'][2] = 0. if speed == 1 else 1. if speed < 0.0002 else speed
+            data['a_bg_color'][2] = 0. if speed == 1 else speed
             data['a_bg_color'][3] = 1.
 
         self.data['a_fg_color'] = 0, 0, 0, 1
@@ -357,10 +362,10 @@ class GlooGrapher(Graph, app.Canvas):
         if not self.pin:
             self.unpinnedframe += 1
         if self.unpinnedframe % 100 == 0:
-            print self.totalEnergy
+            print(self.totalEnergy)
         if self.unpinnedframe == 500:
             elapsed = datetime.now() - self.last
-            print self.frame / elapsed.total_seconds()
+            print(self.frame / elapsed.total_seconds())
             self.create()
             self.edges = None
             self.data = None
