@@ -1,0 +1,10 @@
+[project]
+name = "grapher"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "networkx>=3.5",
+    "numpy>=2.3.1",
+    "pygobject>=3.52.3",
+]
